@@ -71,6 +71,7 @@
     video.muted = true;
     video.defaultMuted = true;
     video.playsInline = true;
+    video.loop = clip.loop === true;
     video.preload = 'none';
     const autoplay = clip.autoplay ?? content.media?.autoplay ?? true;
     video.dataset.autoplay = String(autoplay);
@@ -85,11 +86,16 @@
     source.type = clip.type || 'video/mp4';
     video.append(source, 'Your browser does not support video. ', linkedName('Download this clip.', clip.src));
     figure.append(video);
-    if (clip.title || clip.caption) {
+    if (clip.title || clip.caption || clip.links?.length) {
       const caption = element('figcaption');
       caption.id = `video-caption-${++videoCount}`;
       if (clip.title) caption.append(element('span', '', clip.title));
       if (clip.caption) caption.append(element('small', '', clip.caption));
+      if (clip.links?.length) {
+        const links = element('div', 'media-links');
+        links.append(...clip.links.map(link => linkedName(link.label, link.url)));
+        caption.append(links);
+      }
       video.setAttribute('aria-describedby', caption.id);
       figure.append(caption);
     }
@@ -104,7 +110,7 @@
         if (typeof paragraph === 'string') node.textContent = paragraph.trim();
         else node.append(...paragraph.map(part => typeof part === 'string'
           ? document.createTextNode(part)
-          : linkedName(part.text, part.url)));
+          : part.highlight === true ? element('mark', '', part.text) : linkedName(part.text, part.url)));
         return node;
       }));
       container.append(text);
@@ -115,6 +121,29 @@
       grid.dataset.count = data.videos.length;
       grid.append(...data.videos.map(renderVideo));
       container.append(grid);
+    }
+    if (data.embed) {
+      const wrapper = element('div', 'video-embed');
+      // Video providers may reject embeds without an HTTP referrer.
+      if (location.protocol !== 'file:') {
+        const frame = element('iframe');
+        frame.src = data.embed.src;
+        frame.title = data.embed.title;
+        frame.width = data.embed.width;
+        frame.height = data.embed.height;
+        frame.style.aspectRatio = `${data.embed.width} / ${data.embed.height}`;
+        frame.loading = 'lazy';
+        frame.allowFullscreen = true;
+        frame.allow = 'encrypted-media; picture-in-picture; fullscreen';
+        frame.referrerPolicy = 'strict-origin-when-cross-origin';
+        wrapper.append(frame);
+      }
+      const watch = linkedName('Watch video ↗', data.embed.url || data.embed.src, 'embed-link');
+      watch.setAttribute('aria-label', `Watch ${data.embed.title}`);
+      watch.target = '_blank';
+      watch.rel = 'noopener';
+      wrapper.append(watch);
+      container.append(wrapper);
     }
     if (typeof data.bibtex === 'string' && data.bibtex.trim()) {
       const wrapper = element('div', 'citation-code-wrap');
@@ -138,6 +167,14 @@
       });
       wrapper.append(pre, button, status);
       container.append(wrapper);
+    }
+    for (const detail of data.details || []) {
+      const disclosure = element('details', 'content-details');
+      const body = element('div', 'section-content');
+      disclosure.append(element('summary', '', detail.title));
+      renderBody(body, detail);
+      disclosure.append(body);
+      container.append(disclosure);
     }
     for (const block of data.blocks || []) {
       const item = element('div', 'content-block');

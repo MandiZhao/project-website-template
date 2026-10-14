@@ -54,8 +54,12 @@ window.PAPER_CONTENT = {
     title: "Results",
     navTitle: "Results",
     blocks: [
+      // Optional video embed: { embed: { src: "https://example.com/embed/video", title: "Video", width: 800, height: 450 } }.
+      // Optional expandable text: { details: [{ title: "Example", paragraphs: ["Prompt\nResponse"] }] }.
+      // Inline highlights: paragraphs: [["Answer: ", { text: "Correct option", highlight: true }]].
       { title: "Experiment", paragraphs: ["Describe the experiment and its outcome."] },
       // Add videos as { src, poster, alt, width, height, title: "", caption: "" }.
+      // Videos also accept loop: true and links: [{ label: "Transcript", url: "..." }].
       { videos: [] },
       { paragraphs: ["Use ordered blocks to place commentary after figures or videos."] }
     ]

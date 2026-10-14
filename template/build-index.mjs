@@ -38,6 +38,7 @@ export function renderIndex(content, currentHtml, root, plannedAssets = new Set(
         if (!Array.isArray(paragraph)) throw new Error('Each paragraph must be a string or an array of inline text and links.');
         for (const part of paragraph) {
           if (typeof part === 'string') continue;
+          if (part?.highlight === true && typeof part.text === 'string' && part.url === undefined) continue;
           if (!part || typeof part.text !== 'string' || typeof part.url !== 'string' || !part.url.trim()) {
             throw new Error('Inline links need text and url strings.');
           }
@@ -45,6 +46,25 @@ export function renderIndex(content, currentHtml, root, plannedAssets = new Set(
             throw new Error('Inline links must use HTTP(S), mailto, or relative URLs.');
           }
         }
+      }
+    }
+    if (body.embed) {
+      const embed = body.embed;
+      if (typeof embed.title !== 'string' || !embed.title.trim() || typeof embed.src !== 'string' ||
+          !/^https?:\/\//i.test(embed.src) || !['http:', 'https:'].includes(new URL(embed.src).protocol) ||
+          !Number.isFinite(embed.width) || embed.width <= 0 || !Number.isFinite(embed.height) || embed.height <= 0) {
+        throw new Error('Embedded videos need an HTTP(S) src, title, and positive width/height.');
+      }
+      if (embed.url !== undefined && (typeof embed.url !== 'string' || !/^https?:\/\//i.test(embed.url) ||
+          !['http:', 'https:'].includes(new URL(embed.url).protocol))) {
+        throw new Error('The optional embed.url must be an HTTP(S) watch link.');
+      }
+    }
+    if (body.details !== undefined) {
+      if (!Array.isArray(body.details)) throw new Error('details must be an array.');
+      for (const detail of body.details) {
+        if (!detail || typeof detail.title !== 'string' || !detail.title.trim()) throw new Error('Each detail needs a title.');
+        checkBody(detail);
       }
     }
     for (const block of body.blocks || []) checkBody(block);
