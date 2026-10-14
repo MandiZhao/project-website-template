@@ -1,0 +1,14 @@
+{
+  "name": "project-website-template",
+  "version": "1.0.0",
+  "contentSchemaVersion": 1,
+  "files": [
+    "index.html",
+    "styles.css",
+    "render-content.js",
+    "project.js",
+    "build-index.mjs",
+    "assets/fonts/InterVariable.woff2",
+    "assets/fonts/OFL.txt"
+  ]
+}

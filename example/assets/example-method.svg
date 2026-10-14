@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-labelledby="title">
+  <title id="title">Example research method: input, method, and output</title>
+  <rect width="1200" height="360" rx="8" fill="#f4f7f4"/>
+  <g fill="white" stroke="#b8cbb9" stroke-width="2">
+    <rect x="60" y="90" width="300" height="180" rx="6"/>
+    <rect x="450" y="90" width="300" height="180" rx="6"/>
+    <rect x="840" y="90" width="300" height="180" rx="6"/>
+  </g>
+  <g fill="none" stroke="#355e3b" stroke-width="3">
+    <path d="M375 180h60m-10-10 10 10-10 10M765 180h60m-10-10 10 10-10 10"/>
+  </g>
+  <g fill="#253243" font-family="Arial, sans-serif" font-size="30" text-anchor="middle">
+    <text x="210" y="190">Input</text><text x="600" y="190">Method</text><text x="990" y="190">Output</text>
+  </g>
+</svg>

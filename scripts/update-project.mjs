@@ -1,0 +1,120 @@
+#!/usr/bin/env node
+import { readFileSync, writeFileSync, existsSync, mkdirSync, lstatSync, renameSync, unlinkSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve, relative, join, isAbsolute } from 'node:path';
+import { readContent, renderIndex } from '../template/build-index.mjs';
+
+const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const hash = data => createHash('sha256').update(data).digest('hex');
+const metadataFile = 'template-version.json';
+
+// Metadata changes belong to content.js; all other HTML is template-owned.
+function fingerprint(name, bytes) {
+  if (name !== 'index.html') return hash(bytes);
+  return hash(bytes.toString().replace(/<title>[^<]*<\/title>/, '<title></title>')
+    .replace(/(<meta (?:name="description"|property="og:(?:title|description|url|image)") content=")[^"]*(">)/g, '$1$2'));
+}
+function safeFile(root, name) {
+  if (typeof name !== 'string' || !name || isAbsolute(name) || name.includes('\\') || name.split('/').some(p => !p || p === '.' || p === '..' || p === '.git')) {
+    throw new Error(`Invalid managed path: ${name}`);
+  }
+  let path = root;
+  for (const part of name.split('/')) {
+    path = join(path, part);
+    if (existsSync(path) && lstatSync(path).isSymbolicLink()) throw new Error(`Refusing to replace a symlink: ${path}`);
+  }
+  return path;
+}
+function atomicWrite(path, bytes) {
+  mkdirSync(dirname(path), { recursive: true });
+  const temp = `${path}.template-${process.pid}.tmp`;
+  try { writeFileSync(temp, bytes, { flag: 'wx' }); renameSync(temp, path); }
+  finally { if (existsSync(temp)) unlinkSync(temp); }
+}
+
+function main() {
+  const args = process.argv.slice(2);
+  if (args.includes('--help') || !args.length) {
+    console.log('Usage: node scripts/update-project.mjs PROJECT [--init | --adopt] [--dry-run | --check]\n\n--init     Create a new project with example content and assets.\n--adopt    Explicitly replace overlapping template files during the first migration.\n--dry-run  Validate and list changes without writing.\n--check    Fail if shared files, metadata, or the template version need an update.\n\nExisting content.js and project media are never overwritten. Locally edited\nmanaged files stop an update; move the change into this template first.');
+    return;
+  }
+  const flags = new Set(args.filter(arg => arg.startsWith('--')));
+  for (const flag of flags) if (!['--init', '--adopt', '--dry-run', '--check'].includes(flag)) throw new Error(`Unknown flag: ${flag}`);
+  const paths = args.filter(arg => !arg.startsWith('--'));
+  if (paths.length !== 1) throw new Error('Provide exactly one project directory.');
+  const init = flags.has('--init'), adopt = flags.has('--adopt'), check = flags.has('--check'), dryRun = flags.has('--dry-run');
+  if ((init && adopt) || (check && (init || adopt || dryRun))) throw new Error('These flags cannot be combined.');
+  const project = resolve(paths[0]);
+  if (!relative(repository, project).startsWith('..') || !relative(project, repository).startsWith('..')) {
+    throw new Error('The destination must be separate from the template repository.');
+  }
+  if (existsSync(project) && (!lstatSync(project).isDirectory() || lstatSync(project).isSymbolicLink())) throw new Error('Destination must be a regular directory.');
+  const manifest = JSON.parse(readFileSync(join(repository, 'template.json'), 'utf8'));
+  if (manifest.name !== 'project-website-template' || !/^\d+\.\d+\.\d+$/.test(manifest.version)) throw new Error('Invalid template manifest.');
+  if (!Array.isArray(manifest.files) || new Set(manifest.files).size !== manifest.files.length || !manifest.files.includes('index.html')) throw new Error('Invalid managed file list.');
+  const protectedFiles = new Set(['content.js', 'README.md', metadataFile]);
+  const sourceFiles = new Map();
+  for (const name of manifest.files) {
+    if (protectedFiles.has(name) || (name.startsWith('assets/') && !name.startsWith('assets/fonts/'))) throw new Error(`Project-owned path in manifest: ${name}`);
+    sourceFiles.set(name, readFileSync(safeFile(join(repository, 'template'), name)));
+    safeFile(project, name);
+  }
+  safeFile(project, metadataFile);
+  safeFile(project, 'content.js');
+  const record = existsSync(join(project, metadataFile)) ? JSON.parse(readFileSync(join(project, metadataFile), 'utf8')) : null;
+  if (record && (record.name !== manifest.name || record.formatVersion !== 1 || !record.files || typeof record.files !== 'object' || Array.isArray(record.files))) throw new Error('Unrecognized template-version.json.');
+  if (record && (init || adopt)) throw new Error('This project already uses the template; omit --init/--adopt.');
+
+  const initialFiles = new Map();
+  if (init) {
+    if (existsSync(project) && readdirSync(project).some(name => !['.git', '.DS_Store'].includes(name))) throw new Error('--init requires an empty project directory (a .git directory is allowed).');
+    for (const name of ['content.js', 'assets/example-method.svg', 'README.md']) {
+      initialFiles.set(name, readFileSync(join(repository, 'example', name)));
+    }
+  } else if (!existsSync(join(project, 'content.js'))) throw new Error('Missing content.js. Use --init for a new project.');
+  const content = readContent(init ? join(repository, 'example/content.js') : join(project, 'content.js'));
+  const plannedAssets = new Set([...initialFiles.keys()].map(name => resolve(project, name)));
+  const expected = new Map(sourceFiles);
+  expected.set('index.html', Buffer.from(renderIndex(content, sourceFiles.get('index.html').toString(), project, plannedAssets)));
+
+  // Preflight every managed file before the first write. Unknown files are retained.
+  const oldFiles = record ? Object.keys(record.files) : [];
+  const conflicts = [];
+  for (const name of new Set([...oldFiles, ...expected.keys()])) {
+    if (protectedFiles.has(name) || (name.startsWith('assets/') && !name.startsWith('assets/fonts/'))) throw new Error(`Invalid tracked file: ${name}`);
+    const path = safeFile(project, name);
+    if (!existsSync(path)) continue;
+    if (!lstatSync(path).isFile()) throw new Error(`Expected a file at ${path}`);
+    const current = fingerprint(name, readFileSync(path));
+    const matchesNew = expected.has(name) && current === fingerprint(name, expected.get(name));
+    if (record) {
+      if (current !== record.files[name] && !matchesNew) conflicts.push(name);
+    } else if (!adopt && !matchesNew) conflicts.push(name);
+  }
+  if (conflicts.length) {
+    throw new Error(`${record ? 'Locally edited template files' : 'Existing files need explicit --adopt'}: ${conflicts.join(', ')}. No files changed.`);
+  }
+  const changes = [...expected].filter(([name, bytes]) => !existsSync(join(project, name)) || !readFileSync(join(project, name)).equals(bytes));
+  const removals = oldFiles.filter(name => !expected.has(name) && existsSync(join(project, name)));
+  let revision = null;
+  try { revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* An uncommitted local checkout can still be tested. */ }
+  const digest = hash(JSON.stringify([...sourceFiles].map(([name, bytes]) => [name, hash(bytes)])));
+  const nextRecord = { formatVersion: 1, name: manifest.name, version: manifest.version, contentSchemaVersion: manifest.contentSchemaVersion, templateDigest: digest, sourceRevision: revision, files: Object.fromEntries([...expected].map(([name, bytes]) => [name, fingerprint(name, bytes)])) };
+  const recordChanged = !record || record.version !== nextRecord.version || record.contentSchemaVersion !== nextRecord.contentSchemaVersion || record.templateDigest !== digest || JSON.stringify(record.files) !== JSON.stringify(nextRecord.files);
+  if (check) {
+    if (changes.length || removals.length || recordChanged) throw new Error(`Template update needed: ${[...changes.map(([name]) => name), ...removals, ...(recordChanged ? [metadataFile] : [])].join(', ')}`);
+    console.log(`Up to date: ${project} (${manifest.version})`);
+    return;
+  }
+  if (dryRun) {
+    console.log(JSON.stringify({ project, version: manifest.version, create: [...initialFiles.keys()], update: changes.map(([name]) => name), remove: removals, updateVersion: recordChanged }, null, 2));
+    return;
+  }
+  for (const [name, bytes] of [...initialFiles, ...changes]) atomicWrite(safeFile(project, name), bytes);
+  for (const name of removals) unlinkSync(safeFile(project, name));
+  if (recordChanged) atomicWrite(join(project, metadataFile), `${JSON.stringify(nextRecord, null, 2)}\n`);
+  console.log(`${changes.length || initialFiles.size || removals.length || recordChanged ? 'Updated' : 'Already current'}: ${project} (${manifest.version})`);
+}
+try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; }
