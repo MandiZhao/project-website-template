@@ -18,10 +18,11 @@
   --soft: color-mix(in srgb, var(--accent) 8%, var(--bg));
   --index-ink: color-mix(in srgb, var(--ink) 50%, var(--bg));
   --sans: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   --text-size: 15px;
   --text-leading: 21px;
   --block-gap: 18px;
+  --code-tint-percent: 8%;
   --section-gap: 32px;
   --reading-width: 660px;
   --rail-width: 160px;
@@ -153,6 +154,10 @@ h2 { font: 600 20px/26px var(--sans); }
 .content-details summary { cursor: pointer; color: var(--ink); font: 500 14px/20px var(--sans); }
 .content-details > .section-content { margin-top: 12px; }
 .content-details .prose { white-space: pre-line; overflow-wrap: anywhere; }
+.details-code { --code-bg: color-mix(in srgb, var(--accent) var(--code-tint-percent), var(--bg)); min-width: 0; margin: 0; padding: 16px 18px; border: 1px solid var(--rule); border-left: 2px solid color-mix(in srgb, var(--accent) 42%, var(--bg)); border-radius: 4px; background: var(--code-bg); color: var(--ink); font: 13px/20px var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+.details-code code { color: inherit; font: inherit; }
+.details-code mark { color: inherit; background: color-mix(in srgb, var(--accent) 25%, var(--code-bg)); }
+.details-code a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .video-embed iframe { display: block; width: 100%; height: auto; border: 0; border-radius: 2px; }
 .embed-link { display: inline-block; color: var(--accent); font: 13px/20px var(--sans); text-decoration: underline; text-underline-offset: 3px; }
 .video-embed iframe + .embed-link { margin-top: 8px; }

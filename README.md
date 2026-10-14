@@ -33,6 +33,10 @@ This installs the shared files and replaces overlapping layout files.
 
 ## Edit and publish
 
+For expandable code blocks, set `format: "code"` on a `details` entry.
+`theme.codeTintPercent` sets the accent tint (0–100, default 8); an entry's
+`tintPercent` overrides it. Text stays in `paragraphs`, preserving line breaks.
+
 Project content and colors belong in `content.js`; shared design changes belong
 in `template/`. Before publishing, run from the project directory:
 

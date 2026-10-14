@@ -30,6 +30,12 @@ export function renderIndex(content, currentHtml, root, plannedAssets = new Set(
   if (!['http:', 'https:'].includes(siteUrl.protocol)) throw new Error('paper.siteUrl must be an HTTP(S) URL.');
   if (!Array.isArray(content.sectionOrder) || !content.sectionOrder.length) throw new Error('Set sectionOrder in content.js.');
   const ids = new Set(['project', 'main-content']);
+  function checkPercent(value, label) {
+    if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 100)) {
+      throw new Error(`${label} must be a number from 0 to 100.`);
+    }
+  }
+  checkPercent(content.theme?.codeTintPercent, 'theme.codeTintPercent');
   function checkBody(body) {
     if (body.paragraphs !== undefined) {
       if (!Array.isArray(body.paragraphs)) throw new Error('paragraphs must be an array.');
@@ -64,6 +70,10 @@ export function renderIndex(content, currentHtml, root, plannedAssets = new Set(
       if (!Array.isArray(body.details)) throw new Error('details must be an array.');
       for (const detail of body.details) {
         if (!detail || typeof detail.title !== 'string' || !detail.title.trim()) throw new Error('Each detail needs a title.');
+        if (detail.format !== undefined && !['prose', 'code'].includes(detail.format)) {
+          throw new Error('Detail format must be prose or code.');
+        }
+        checkPercent(detail.tintPercent, 'Detail tintPercent');
         checkBody(detail);
       }
     }

@@ -9,7 +9,8 @@ window.PAPER_CONTENT = {
     accent: "#355E3B",
     text: "#253243",
     tintBackground: false,
-    backgroundTintPercent: 0
+    backgroundTintPercent: 0,
+    codeTintPercent: 8 // Background accent percentage for expandable code blocks (0–100).
   },
   media: {
     autoplay: true, // Play muted clips while visible. Individual clips can override this.
@@ -56,6 +57,7 @@ window.PAPER_CONTENT = {
     blocks: [
       // Optional video embed: { embed: { src: "https://example.com/embed/video", title: "Video", width: 800, height: 450 } }.
       // Optional expandable text: { details: [{ title: "Example", paragraphs: ["Prompt\nResponse"] }] }.
+      // Add format: "code" for a monospace block; optional tintPercent: 12 overrides theme.codeTintPercent.
       // Inline highlights: paragraphs: [["Answer: ", { text: "Correct option", highlight: true }]].
       { title: "Experiment", paragraphs: ["Describe the experiment and its outcome."] },
       // Add videos as { src, poster, alt, width, height, title: "", caption: "" }.

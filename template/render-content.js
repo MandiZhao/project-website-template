@@ -1,6 +1,8 @@
 // Shared content renderer. Classic scripts keep direct file:// opening working.
 (() => {
   const content = window.PAPER_CONTENT;
+  const percentage = (value, fallback = 8) => Number.isFinite(Number(value))
+    ? Math.max(0, Math.min(100, Number(value))) : fallback;
   // Two editable colors drive all page chrome; derived shades live in CSS.
   if (content.theme) {
     const root = document.documentElement;
@@ -14,6 +16,7 @@
     const requestedTint = Number(content.theme.backgroundTintPercent ?? 4);
     const tint = Number.isFinite(requestedTint) ? Math.max(0, Math.min(100, requestedTint)) : 4;
     root.style.setProperty('--background-tint-percent', `${tint}%`);
+    root.style.setProperty('--code-tint-percent', `${percentage(content.theme.codeTintPercent ?? 8)}%`);
 
   }
   const element = (tag, className, text) => {
@@ -101,16 +104,28 @@
     }
     return figure;
   };
-  const renderBody = (container, data) => {
+  const appendText = (node, paragraph) => {
+    if (typeof paragraph === 'string') node.append(document.createTextNode(paragraph));
+    else node.append(...paragraph.map(part => typeof part === 'string'
+      ? document.createTextNode(part)
+      : part.highlight === true ? element('mark', '', part.text) : linkedName(part.text, part.url)));
+  };
+  const renderBody = (container, data, codeParagraphs = false) => {
     const paragraphs = data.paragraphs || [];
-    if (paragraphs.length) {
+    if (paragraphs.length && codeParagraphs) {
+      const pre = element('pre', 'details-code');
+      const code = element('code');
+      paragraphs.forEach((paragraph, index) => {
+        if (index) code.append(document.createTextNode('\n\n'));
+        appendText(code, paragraph);
+      });
+      pre.append(code);
+      container.append(pre);
+    } else if (paragraphs.length) {
       const text = element('div', 'text-block');
       text.append(...paragraphs.map(paragraph => {
         const node = element('p', 'prose');
-        if (typeof paragraph === 'string') node.textContent = paragraph.trim();
-        else node.append(...paragraph.map(part => typeof part === 'string'
-          ? document.createTextNode(part)
-          : part.highlight === true ? element('mark', '', part.text) : linkedName(part.text, part.url)));
+        appendText(node, typeof paragraph === 'string' ? paragraph.trim() : paragraph);
         return node;
       }));
       container.append(text);
@@ -171,15 +186,18 @@
     for (const detail of data.details || []) {
       const disclosure = element('details', 'content-details');
       const body = element('div', 'section-content');
+      if (detail.tintPercent !== undefined) {
+        disclosure.style.setProperty('--code-tint-percent', `${percentage(detail.tintPercent)}%`);
+      }
       disclosure.append(element('summary', '', detail.title));
-      renderBody(body, detail);
+      renderBody(body, detail, detail.format === 'code');
       disclosure.append(body);
       container.append(disclosure);
     }
     for (const block of data.blocks || []) {
       const item = element('div', 'content-block');
       if (block.title) item.append(element('h3', '', block.title));
-      renderBody(item, block);
+      renderBody(item, block, codeParagraphs);
       if (item.childElementCount) container.append(item);
     }
   };

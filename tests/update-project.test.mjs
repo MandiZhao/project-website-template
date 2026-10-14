@@ -158,6 +158,30 @@ test('custom title lines preserve metadata and reject empty or mismatched text b
   }
 });
 
+test('expandable code format supports global and per-entry tint, rejecting invalid settings before writes', t => {
+  const { project, source, ok, run } = fixture(t);
+  cpSync(join(source, 'example'), project, { recursive: true });
+  const path = join(project, 'content.js');
+  const original = read(path);
+  const content = (globalTint, detail) => original + `\nwindow.PAPER_CONTENT.theme.codeTintPercent = ${JSON.stringify(globalTint)};\nwindow.PAPER_CONTENT.results.details = [${JSON.stringify(detail)}];\n`;
+  for (const tint of [0, 8, 100]) {
+    writeFileSync(path, content(tint, { title: 'Code', format: 'code', tintPercent: tint, paragraphs: ['  if (x < 1) {\n    run();\n  }'] }));
+    ok('--preview'); ok('--preview', '--check');
+  }
+  const before = read(join(project, 'preview.html'));
+  for (const [globalTint, detail] of [
+    [-1, { title: 'Example' }], [101, { title: 'Example' }], ['8', { title: 'Example' }],
+    [8, { title: 'Example', format: 'html' }], [8, { title: 'Example', tintPercent: -1 }],
+    [8, { title: 'Example', tintPercent: 101 }], [8, { title: 'Example', tintPercent: null }],
+  ]) {
+    writeFileSync(path, content(globalTint, detail));
+    const result = run('--preview');
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /tintPercent|codeTintPercent|Detail format/);
+    assert.equal(read(join(project, 'preview.html')), before);
+  }
+});
+
 test('inline links work in nested blocks; invalid paragraphs stop updates before writes', t => {
   const { project, source, run, ok } = fixture(t); ok('--init');
   const contentPath = join(project, 'content.js');
