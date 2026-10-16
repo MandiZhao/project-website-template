@@ -35,6 +35,10 @@ test('new project is self-contained, checked, and unchanged by a repeated update
   ok('--init');
   assert.equal(read(join(project, 'styles.css')), read(join(source, 'template/styles.css')));
   assert.ok(existsSync(join(project, 'assets/example-method.svg')));
+  for (const asset of ['placeholder-wide.svg', 'placeholder-tall.svg', 'placeholder-logo.svg', 'placeholder.mp4']) {
+    assert.deepEqual(readFileSync(join(project, 'assets', asset)), readFileSync(join(source, 'example/assets', asset)));
+  }
+  assert.equal(existsSync(join(project, 'example.html')), false);
   const record = JSON.parse(read(join(project, 'template-version.json')));
   assert.equal(record.version, JSON.parse(read(join(source, 'template.json'))).version);
   assert.equal(Object.keys(record.files).length, 7);
@@ -138,12 +142,68 @@ test('expandable examples, highlights, and embeds validate before generation', t
   }
 });
 
+test('wrapped figures and numbered entries validate nested content before changing a preview', t => {
+  const { project, source, ok, run } = fixture(t);
+  cpSync(join(source, 'example'), project, { recursive: true });
+  const contentPath = join(project, 'content.js');
+  const original = read(contentPath);
+  const figure = { src: 'assets/example-method.svg', alt: 'Method diagram', width: 1200, height: 360 };
+  const entry = { title: 'First mechanism', paragraphs: [['Read ', { text: 'the paper', url: 'https://example.com/paper' }]] };
+  const withBlock = block => original + `\nwindow.PAPER_CONTENT.method.blocks = [${JSON.stringify(block)}];\n`;
+  writeFileSync(contentPath, withBlock({ layout: 'figure-wrap', figure, orderedList: [entry] }));
+  ok('--preview'); ok('--preview', '--check');
+  const before = read(join(project, 'preview.html'));
+  for (const block of [
+    { layout: 'unknown', figure },
+    { layout: 'figure-wrap' },
+    { layout: 'figure-wrap', figure: { ...figure, width: 0 } },
+    { layout: 'figure-wrap', figure: { ...figure, alt: '' } },
+    { layout: 'figure-wrap', figure: { ...figure, src: 'missing.png' }, orderedList: [entry] },
+    { orderedList: [] }, { orderedList: 'First mechanism' }, { orderedList: [null] },
+    { orderedList: [{ title: 42 }] },
+    { orderedList: [{ paragraphs: [[{ text: 'Unsafe link', url: 'javascript:alert(1)' }]] }] },
+    { orderedList: [{ figure: { src: 'missing.png' } }] },
+  ]) {
+    writeFileSync(contentPath, withBlock(block));
+    assert.notEqual(run('--preview').status, 0, JSON.stringify(block));
+    assert.equal(read(join(project, 'preview.html')), before);
+  }
+});
+
+test('carousels validate comparison content and playback settings before writing', t => {
+  const { project, source, ok, run } = fixture(t);
+  cpSync(join(source, 'example'), project, { recursive: true });
+  const contentPath = join(project, 'content.js');
+  const original = read(contentPath);
+  const slide = { title: 'Task', playbackRate: 3, groups: [{ title: 'Method', metric: '77% success',
+    videos: [{ src: 'assets/placeholder.mp4', poster: 'assets/placeholder-wide.svg', width: 960, height: 540, playbackRate: 1 }] }] };
+  const withCarousel = (carousel, maxConcurrentVideos = 2) => original +
+    `\nwindow.PAPER_CONTENT.results.carousel = ${JSON.stringify(carousel)};\nwindow.PAPER_CONTENT.media.maxConcurrentVideos = ${JSON.stringify(maxConcurrentVideos)};\n`;
+  writeFileSync(contentPath, withCarousel({ slides: [slide] }));
+  ok('--preview'); ok('--preview', '--check');
+  const before = read(join(project, 'preview.html'));
+  for (const [carousel, limit] of [
+    [{ slides: [] }, 2], [{ slides: [null] }, 2], [{ slides: [{ ...slide, title: '' }] }, 2],
+    [{ slides: [{ ...slide, playbackRate: 0 }] }, 2], [{ slides: [{ ...slide, groups: [] }] }, 2],
+    [{ slides: [{ ...slide, groups: [{ title: 'Method', metric: 77 }] }] }, 2],
+    [{ slides: [{ ...slide, groups: [{ title: 'Method', paragraphs: [[{ text: 'Unsafe', url: 'javascript:alert(1)' }]] }] }] }, 2],
+    [{ slides: [{ ...slide, groups: [{ title: 'Method', videos: [{ src: 'missing.mp4' }] }] }] }, 2],
+    [{ slides: [{ ...slide, groups: [{ title: 'Method', videos: [{ src: 'assets/placeholder.mp4', originalSrc: 'missing.mp4' }] }] }] }, 2],
+    [{ slides: [{ ...slide, groups: [{ title: 'Method', videos: [{ src: 'assets/placeholder.mp4', playbackRate: 17 }] }] }] }, 2],
+    [{ slides: [{ ...slide, videoLayout: 'invalid' }] }, 2],
+    [{ slides: [slide] }, 0], [{ slides: [slide] }, 9], [{ slides: [slide] }, 1.5],
+  ]) {
+    writeFileSync(contentPath, withCarousel(carousel, limit));
+    assert.notEqual(run('--preview').status, 0);
+    assert.equal(read(join(project, 'preview.html')), before);
+  }
+});
+
 test('custom title lines preserve metadata and reject empty or mismatched text before writes', t => {
   const { project, source, run, ok } = fixture(t); ok('--init');
   const path = join(project, 'content.js');
   const original = read(path);
-  const withLines = lines => original.replace('name: "Project Name",',
-    `name: "Project Name", titleLines: ${JSON.stringify(lines)},`);
+  const withLines = lines => original + `\nwindow.PAPER_CONTENT.paper.titleLines = ${JSON.stringify(lines)};\n`;
   writeFileSync(path, withLines(['A Clear Title', 'for Your Research']));
   ok('--check');
   assert.match(read(join(project, 'index.html')), /Project Name — A Clear Title for Your Research/);
@@ -269,9 +329,9 @@ test('reserved and duplicate section IDs are rejected', t => {
   const { project, source, run } = fixture(t);
   cpSync(join(source, 'example'), project, { recursive: true });
   const original = read(join(project, 'content.js'));
-  writeFileSync(join(project, 'content.js'), original.replace('["abstract", "method", "results", "citation"]', '["abstract", "abstract"]'));
+  writeFileSync(join(project, 'content.js'), original + '\nwindow.PAPER_CONTENT.sectionOrder = ["abstract", "abstract"];\n');
   assert.match(run().stderr, /Duplicate or reserved section id/);
-  writeFileSync(join(project, 'content.js'), original.replace('["abstract", "method", "results", "citation"]', '["project"]').replace('abstract: {', 'project: {'));
+  writeFileSync(join(project, 'content.js'), original + '\nwindow.PAPER_CONTENT.project = window.PAPER_CONTENT.abstract;\nwindow.PAPER_CONTENT.sectionOrder = ["project"];\n');
   assert.match(run().stderr, /Duplicate or reserved section id/);
 });
 

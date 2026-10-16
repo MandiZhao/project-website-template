@@ -89,9 +89,18 @@ function main() {
   const initialFiles = new Map();
   if (init) {
     if (existsSync(project) && readdirSync(project).some(name => !['.git', '.DS_Store'].includes(name))) throw new Error('--init requires an empty project directory (a .git directory is allowed).');
-    for (const name of ['content.js', 'assets/example-method.svg', 'README.md']) {
+    for (const name of ['content.js', 'README.md']) {
       initialFiles.set(name, readFileSync(join(repository, 'example', name)));
     }
+    function addExampleAssets(directory) {
+      for (const entry of readdirSync(join(repository, 'example', directory), { withFileTypes: true })) {
+        const name = `${directory}/${entry.name}`;
+        if (entry.isDirectory()) addExampleAssets(name);
+        else if (entry.isFile()) initialFiles.set(name, readFileSync(safeFile(join(repository, 'example'), name)));
+        else throw new Error(`Example assets must be regular files: ${name}`);
+      }
+    }
+    addExampleAssets('assets');
   } else if (!existsSync(join(project, 'content.js'))) throw new Error('Missing content.js. Use --init for a new project.');
   const content = readContent(init ? join(repository, 'example/content.js') : join(project, 'content.js'));
   const plannedAssets = new Set([...initialFiles.keys()].map(name => resolve(project, name)));

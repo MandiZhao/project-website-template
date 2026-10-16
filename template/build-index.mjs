@@ -36,7 +36,58 @@ export function renderIndex(content, currentHtml, root, plannedAssets = new Set(
     }
   }
   checkPercent(content.theme?.codeTintPercent, 'theme.codeTintPercent');
+  if (content.media?.maxConcurrentVideos !== undefined &&
+      (!Number.isInteger(content.media.maxConcurrentVideos) || content.media.maxConcurrentVideos < 1 || content.media.maxConcurrentVideos > 8)) {
+    throw new Error('media.maxConcurrentVideos must be an integer from 1 to 8.');
+  }
   function checkBody(body) {
+    if (body.videoLayout !== undefined && !['grid', 'carousel'].includes(body.videoLayout)) {
+      throw new Error('videoLayout must be grid or carousel.');
+    }
+    if (body.playbackRate !== undefined && (!Number.isFinite(body.playbackRate) || body.playbackRate <= 0 || body.playbackRate > 16)) {
+      throw new Error('playbackRate must be a positive number up to 16.');
+    }
+    for (const video of body.videos || []) checkBody(video);
+    if (body.carousel !== undefined) {
+      const slides = body.carousel?.slides;
+      if (!Array.isArray(slides) || !slides.length) throw new Error('carousel.slides must be a nonempty array.');
+      for (const slide of slides) {
+        if (!slide || typeof slide.title !== 'string' || !slide.title.trim()) throw new Error('Each carousel slide needs a title.');
+        checkBody(slide);
+        if (slide.groups !== undefined) {
+          if (!Array.isArray(slide.groups) || !slide.groups.length) throw new Error('Slide groups must be a nonempty array.');
+          for (const group of slide.groups) {
+            if (!group || typeof group.title !== 'string' || !group.title.trim()) throw new Error('Each comparison group needs a title.');
+            if (group.metric !== undefined && typeof group.metric !== 'string') throw new Error('Group metric must be a string.');
+            checkBody(group);
+          }
+        }
+      }
+    }
+    if (body.layout !== undefined) {
+      if (body.layout !== 'figure-wrap') throw new Error('Body layout must be figure-wrap.');
+      const figure = body.figure;
+      if (!figure || typeof figure.src !== 'string' || !figure.src.trim() ||
+          typeof figure.alt !== 'string' || !figure.alt.trim() ||
+          !Number.isFinite(figure.width) || figure.width <= 0 ||
+          !Number.isFinite(figure.height) || figure.height <= 0) {
+        throw new Error('figure-wrap needs a figure with src, alt, and positive width/height.');
+      }
+    }
+    if (body.orderedList !== undefined) {
+      if (!Array.isArray(body.orderedList) || !body.orderedList.length) {
+        throw new Error('orderedList must be a nonempty array of content entries.');
+      }
+      for (const entry of body.orderedList) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+          throw new Error('Each orderedList entry must be a content object.');
+        }
+        if (entry.title !== undefined && (typeof entry.title !== 'string' || !entry.title.trim())) {
+          throw new Error('An orderedList entry title must be a nonempty string.');
+        }
+        checkBody(entry);
+      }
+    }
     if (body.paragraphs !== undefined) {
       if (!Array.isArray(body.paragraphs)) throw new Error('paragraphs must be an array.');
       for (const paragraph of body.paragraphs) {
@@ -79,6 +130,7 @@ export function renderIndex(content, currentHtml, root, plannedAssets = new Set(
     }
     for (const block of body.blocks || []) checkBody(block);
   }
+  if (paper.video) checkBody(paper.video);
   for (const id of content.sectionOrder) {
     if (typeof id !== 'string' || !/^[a-z][a-z0-9-]*$/.test(id) || !content[id]?.title) {
       throw new Error(`Section ${id} needs a valid id and title in content.js.`);
@@ -94,7 +146,7 @@ export function renderIndex(content, currentHtml, root, plannedAssets = new Set(
   function checkMedia(value) {
     if (!value || typeof value !== 'object') return;
     for (const [key, item] of Object.entries(value)) {
-      if (['src', 'poster', 'socialImage', 'favicon'].includes(key) && typeof item === 'string' && item) {
+      if (['src', 'poster', 'originalSrc', 'socialImage', 'favicon'].includes(key) && typeof item === 'string' && item) {
         if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(item)) continue;
         const path = resolve(root, decodeURIComponent(item.split(/[?#]/)[0]));
         if (!plannedAssets.has(path) && (!existsSync(path) || !statSync(path).isFile())) missing.push(item);

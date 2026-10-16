@@ -78,16 +78,16 @@
     video.preload = 'none';
     const autoplay = clip.autoplay ?? content.media?.autoplay ?? true;
     video.dataset.autoplay = String(autoplay);
-    if (clip.poster) video.poster = clip.poster;
+    if (clip.poster) video.dataset.poster = clip.poster;
+    if (clip.playbackRate !== undefined) video.dataset.playbackRate = String(clip.playbackRate);
     video.width = clip.width;
     video.height = clip.height;
     video.style.aspectRatio = `${clip.width} / ${clip.height}`;
     video.setAttribute('aria-label', clip.alt || clip.title);
     const source = element('source');
-    if (autoplay) source.dataset.src = clip.src;
-    else source.src = clip.src;
+    source.dataset.src = clip.src;
     source.type = clip.type || 'video/mp4';
-    video.append(source, 'Your browser does not support video. ', linkedName('Download this clip.', clip.src));
+    video.append(source, 'Your browser does not support video. ', linkedName('Download this clip.', clip.originalSrc || clip.src));
     figure.append(video);
     if (clip.title || clip.caption || clip.links?.length) {
       const caption = element('figcaption');
@@ -110,7 +110,108 @@
       ? document.createTextNode(part)
       : part.highlight === true ? element('mark', '', part.text) : linkedName(part.text, part.url)));
   };
-  const renderBody = (container, data, codeParagraphs = false) => {
+  const renderVideoCarousel = (clips) => {
+    const carousel = element('div', 'video-carousel');
+    carousel.setAttribute('role', 'region');
+    carousel.setAttribute('aria-roledescription', 'carousel');
+    carousel.setAttribute('aria-label', 'Video examples');
+    const controls = element('div', 'video-carousel-controls');
+    const previous = element('button', 'video-previous', '←');
+    previous.type = 'button';
+    previous.setAttribute('aria-label', 'Previous videos');
+    const next = element('button', 'video-next', '→');
+    next.type = 'button';
+    next.setAttribute('aria-label', 'Next videos');
+    const counter = element('span', 'video-counter');
+    counter.setAttribute('aria-hidden', 'true');
+    controls.append(previous, counter, next);
+    controls.hidden = clips.length < 2;
+    const track = element('div', 'video-track');
+    track.tabIndex = 0;
+    track.setAttribute('aria-label', 'Scrollable video clips');
+    track.dataset.count = clips.length;
+    track.append(...clips.map(renderVideo));
+    carousel.append(controls, track);
+    return carousel;
+  };
+  const renderCarousel = (data) => {
+    const carousel = element('div', 'experiment-carousel');
+    carousel.setAttribute('role', 'region');
+    carousel.setAttribute('aria-roledescription', 'carousel');
+    carousel.setAttribute('aria-label', data.label || 'Experiment tasks');
+    const header = element('div', 'carousel-header');
+    const heading = element('div', 'carousel-heading');
+    heading.append(element('h3', 'carousel-title', data.slides[0].title), element('span', 'carousel-rate'));
+    const controls = element('div', 'carousel-controls');
+    const previous = element('button', 'carousel-previous', '←');
+    previous.type = 'button';
+    previous.setAttribute('aria-label', 'Previous task');
+    const next = element('button', 'carousel-next', '→');
+    next.type = 'button';
+    next.setAttribute('aria-label', 'Next task');
+    const counter = element('span', 'carousel-counter', `1 / ${data.slides.length}`);
+    counter.setAttribute('aria-hidden', 'true');
+    controls.append(previous, counter, next);
+    controls.hidden = data.slides.length < 2;
+    const status = element('span', 'carousel-status');
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    header.append(heading, controls, status);
+    carousel.append(header);
+    data.slides.forEach((slide, index) => {
+      const panel = element('article', 'carousel-slide');
+      panel.hidden = index !== 0;
+      panel.dataset.title = slide.title;
+      panel.dataset.playbackRate = String(slide.playbackRate ?? 1);
+      panel.setAttribute('role', 'group');
+      panel.setAttribute('aria-roledescription', 'slide');
+      panel.setAttribute('aria-label', `${index + 1} of ${data.slides.length}: ${slide.title}`);
+      renderBody(panel, slide);
+      if (slide.groups?.length) {
+        const groups = element('div', 'carousel-groups');
+        groups.dataset.count = slide.groups.length;
+        for (const group of slide.groups) {
+          const column = element('div', 'carousel-group');
+          const label = element('div', 'carousel-group-heading');
+          label.append(element('h4', '', group.title));
+          if (group.metric) label.append(element('p', 'carousel-metric', group.metric));
+          column.append(label);
+          renderBody(column, group, false, true);
+          const rows = column.querySelectorAll('.video-carousel');
+          if (rows.length === 1) {
+            const row = rows[0];
+            const track = row.querySelector('.video-track');
+            // A task illustration shares the method's single row of examples.
+            for (const figure of column.querySelectorAll('.method-figure')) {
+              if (figure.closest('.figure-wrap') || figure.closest('.video-track')) continue;
+              const parent = figure.parentElement;
+              figure.classList.add('video-figure');
+              track.append(figure);
+              if (parent.matches('.content-block') && !parent.childElementCount) parent.remove();
+            }
+            track.dataset.count = track.children.length;
+            row.querySelector('.video-carousel-controls').hidden = track.children.length < 2;
+            row.setAttribute('aria-label', `${group.title} videos`);
+            row.querySelector('.video-previous').setAttribute('aria-label', `Previous examples for ${group.title}`);
+            row.querySelector('.video-next').setAttribute('aria-label', `Next examples for ${group.title}`);
+            label.append(row.querySelector('.video-carousel-controls'));
+          }
+          groups.append(column);
+        }
+        panel.append(groups);
+      }
+      carousel.append(panel);
+    });
+    return carousel;
+  };
+  const renderBody = (container, data, codeParagraphs = false, videoCarousel = false) => {
+    if (data.layout === 'figure-wrap') {
+      const wrapper = element('div', 'figure-wrap');
+      wrapper.append(renderFigure(data.figure));
+      renderBody(wrapper, { ...data, layout: undefined, figure: undefined }, codeParagraphs, videoCarousel);
+      container.append(wrapper);
+      return;
+    }
     const paragraphs = data.paragraphs || [];
     if (paragraphs.length && codeParagraphs) {
       const pre = element('pre', 'details-code');
@@ -130,13 +231,27 @@
       }));
       container.append(text);
     }
+    if (data.orderedList?.length) {
+      const list = element('ol', 'ordered-list');
+      for (const entry of data.orderedList) {
+        const item = element('li');
+        if (entry.title) item.append(element('h3', '', entry.title));
+        renderBody(item, entry, codeParagraphs, videoCarousel);
+        list.append(item);
+      }
+      container.append(list);
+    }
     if (data.figure) container.append(renderFigure(data.figure));
     if (data.videos?.length) {
-      const grid = element('div', 'video-grid');
-      grid.dataset.count = data.videos.length;
-      grid.append(...data.videos.map(renderVideo));
-      container.append(grid);
+      if (videoCarousel || data.videoLayout === 'carousel') container.append(renderVideoCarousel(data.videos));
+      else {
+        const grid = element('div', 'video-grid');
+        grid.dataset.count = data.videos.length;
+        grid.append(...data.videos.map(renderVideo));
+        container.append(grid);
+      }
     }
+    if (data.carousel) container.append(renderCarousel(data.carousel));
     if (data.embed) {
       const wrapper = element('div', 'video-embed');
       // Video providers may reject embeds without an HTTP referrer.
@@ -190,14 +305,14 @@
         disclosure.style.setProperty('--code-tint-percent', `${percentage(detail.tintPercent)}%`);
       }
       disclosure.append(element('summary', '', detail.title));
-      renderBody(body, detail, detail.format === 'code');
+      renderBody(body, detail, detail.format === 'code', videoCarousel);
       disclosure.append(body);
       container.append(disclosure);
     }
     for (const block of data.blocks || []) {
       const item = element('div', 'content-block');
       if (block.title) item.append(element('h3', '', block.title));
-      renderBody(item, block, codeParagraphs);
+      renderBody(item, block, codeParagraphs, videoCarousel);
       if (item.childElementCount) container.append(item);
     }
   };

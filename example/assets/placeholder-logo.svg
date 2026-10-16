@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="60" viewBox="0 0 240 60" role="img" aria-labelledby="title">
+  <title id="title">Placeholder institution logo</title>
+  <rect x="1" y="1" width="238" height="58" rx="4" fill="#f4f7f4" stroke="#d2dbd3" stroke-width="2"/>
+  <text x="120" y="39" fill="#718174" font-family="Arial, sans-serif" font-size="24" text-anchor="middle">Institution</text>
+</svg>

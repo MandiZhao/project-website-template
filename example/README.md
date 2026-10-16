@@ -1,5 +1,13 @@
 # Project website
 
+Inside the template repository, open `example.html` for the layout showcase.
+Edit `content.js` and refresh. Run `npm run build:example` from the repository
+root to regenerate its embedded template styles and scripts, then run
+`npm run check:example`. The small local video and SVGs are placeholders.
+The embed uses an intentional example.com URL; replace it with your provider URL.
+
+In a project created with `--init`, follow the instructions below.
+
 Edit `content.js` and refresh `index.html` in your browser. Project text, media,
 section order, navigation, theme colors, and playback settings all live there.
 Place project media in `assets/`. Use `paper.siteUrl` for the published URL.
